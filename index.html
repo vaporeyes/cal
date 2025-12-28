@@ -1,0 +1,325 @@
+<!--
+ABOUTME: Static JavaScript calendar - displays full year on a single printable page.
+ABOUTME: Based on Neatnik's calendar, converted to client-side JS with additional features.
+
+MIT License
+
+Based on Calendar by Neatnik LLC (https://neatnik.net/calendar)
+Original work: Copyright (c) 2025 Neatnik LLC
+Modifications: Copyright (c) 2025 Josh Huckabee
+
+Modifications include:
+- Conversion from PHP to client-side JavaScript
+- Added "sofshavua" parameter for Friday/Saturday weekend highlighting
+- Added "aligned-weekdays" layout option
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Calendar</title>
+<meta name="title" content="Calendar">
+<meta name="og:title" content="Calendar">
+<meta name="description" content="A simple printable calendar with the full year on a single page">
+<meta name="og:description" content="A simple printable calendar with the full year on a single page">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+@import url('https://fonts.bunny.net/css?family=inter:300|oswald:300,400');
+@media print {
+  @page {
+    margin: 0;
+    padding: 1em;
+  }
+  #info {
+    display: none;
+  }
+  td {
+    font-size: 8px !important;
+  }
+  .weekend {
+    background: #d8d8d8 !important;
+  }
+}
+html {
+  font-family: 'Oswald';
+}
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+table {
+  width: 100%;
+  height: calc(100% - 2.5em);
+  border-collapse: separate;
+  border-spacing: .5em 0;
+}
+td, th {
+  font-weight: normal;
+  text-transform: uppercase;
+  border-bottom: 1px solid #888;
+  padding: .3vmin .3vmin;
+  font-size: .9vmin;
+  font-weight: 300;
+  color: #000;
+}
+th {
+  font-size: 1.1vmin;
+  padding: 0;
+}
+td:empty {
+  border: 0;
+}
+.date {
+  display: inline-block;
+  width: 1.1em;
+}
+.day {
+  display: inline-block;
+  text-align: center;
+  width: 1em;
+  color: #888;
+}
+.weekend {
+  background: #eee;
+  font-weight: 400;
+}
+p {
+  margin: 0 0 .5em 0;
+  text-align: center;
+}
+* {
+  color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+#info {
+  font-family: 'Inter', sans-serif;
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 5em 2em;
+  width: calc(100% - 6em);
+  background: #333;
+  color: #eee;
+  padding: 1em 1em .5em 1em;
+  font-size: 2vmax;
+  border-radius: .2em;
+}
+#info p {
+  text-align: left;
+  margin: 0 0 1em 0;
+  line-height: 135%;
+}
+#info a {
+  color: inherit;
+}
+</style>
+</head>
+<body>
+<div id="info">
+<p>Click <a id="next-year-link" href="">here</a> for <span id="next-year-text"></span>.</p>
+<p style="font-size: 80%; color: #999;">Converted to JS by <a href="https://github.com/vaporeyes">vaporeyes</a> &#183; <a href="https://github.com/vaporeyes/cal">source</a></p>
+<p style="font-size: 80%; color: #999;">Originally by <a href="https://neatnik.net/">Neatnik</a> &#183; <a href="https://source.tube/neatnik/calendar">source</a></p>
+</div>
+<p id="year-heading"></p>
+<table>
+<thead>
+<tr id="month-headers"></tr>
+</thead>
+<tbody id="calendar-body">
+</tbody>
+</table>
+
+<script>
+
+// ============================================================
+// Date utility functions
+// ============================================================
+
+function getDaysInMonth(year, month) {
+  // month is 1-12
+  return new Date(year, month, 0).getDate();
+}
+
+function getFirstWeekday(year, month) {
+  // Returns 1-7 (Mon-Sun) for first day of month
+  const jsDay = new Date(year, month - 1, 1).getDay();
+  return jsDay === 0 ? 7 : jsDay;
+}
+
+function isWeekend(dayOfWeek, sofshavua) {
+  // dayOfWeek is 1-7 (Mon-Sun)
+  if (sofshavua) {
+    return dayOfWeek === 5 || dayOfWeek === 6; // Fri-Sat
+  }
+  return dayOfWeek === 6 || dayOfWeek === 7; // Sat-Sun
+}
+
+function getWeekdayLetter(year, month, day) {
+  const date = new Date(year, month - 1, day);
+  return new Intl.DateTimeFormat('en', { weekday: 'short' }).format(date)[0];
+}
+
+function getMonthName(month) {
+  const date = new Date(2000, month - 1, 1);
+  return new Intl.DateTimeFormat('en', { month: 'short' }).format(date);
+}
+
+function getDayOfWeek(year, month, day) {
+  // Returns 1-7 (Mon-Sun)
+  const jsDay = new Date(year, month - 1, day).getDay();
+  return jsDay === 0 ? 7 : jsDay;
+}
+
+// ============================================================
+// Calendar data builders
+// ============================================================
+
+function buildDefaultLayoutData(year) {
+  // 31 rows x 12 columns - each row is a day of month (1-31)
+  const months = [];
+  for (let m = 1; m <= 12; m++) {
+    const daysInMonth = getDaysInMonth(year, m);
+    const days = [];
+    for (let d = 1; d <= 31; d++) {
+      if (d <= daysInMonth) {
+        days.push({
+          day: d,
+          weekday: getDayOfWeek(year, m, d),
+          weekdayLetter: getWeekdayLetter(year, m, d)
+        });
+      } else {
+        days.push(null);
+      }
+    }
+    months.push(days);
+  }
+  return months;
+}
+
+function buildAlignedWeekdaysData(year) {
+  // 42 rows x 12 columns - 6 weeks, days aligned by weekday position
+  const months = [];
+  for (let m = 1; m <= 12; m++) {
+    const daysInMonth = getDaysInMonth(year, m);
+    const firstWeekday = getFirstWeekday(year, m);
+    const days = [];
+    let dayNum = 1;
+
+    for (let slot = 1; slot <= 42; slot++) {
+      if (slot < firstWeekday || dayNum > daysInMonth) {
+        days.push(null);
+      } else {
+        days.push({
+          day: dayNum,
+          weekday: getDayOfWeek(year, m, dayNum)
+        });
+        dayNum++;
+      }
+    }
+    months.push(days);
+  }
+  return months;
+}
+
+// ============================================================
+// DOM rendering
+// ============================================================
+
+function renderCalendar(year, layout, sofshavua) {
+  // Year heading
+  document.getElementById('year-heading').textContent = year;
+
+  // Next year link
+  const nextYear = year + 1;
+  document.getElementById('next-year-text').textContent = nextYear;
+  document.getElementById('next-year-link').href = '?year=' + nextYear;
+
+  // Month headers
+  const headerRow = document.getElementById('month-headers');
+  headerRow.innerHTML = '';
+  for (let m = 1; m <= 12; m++) {
+    const th = document.createElement('th');
+    th.textContent = getMonthName(m);
+    headerRow.appendChild(th);
+  }
+
+  // Calendar body
+  const tbody = document.getElementById('calendar-body');
+  tbody.innerHTML = '';
+
+  const isAligned = layout === 'aligned-weekdays';
+  const data = isAligned ? buildAlignedWeekdaysData(year) : buildDefaultLayoutData(year);
+  const numRows = isAligned ? 42 : 31;
+
+  for (let row = 0; row < numRows; row++) {
+    const tr = document.createElement('tr');
+
+    for (let m = 0; m < 12; m++) {
+      const td = document.createElement('td');
+      const cell = data[m][row];
+
+      if (cell) {
+        if (isWeekend(cell.weekday, sofshavua)) {
+          td.className = 'weekend';
+        }
+
+        if (isAligned) {
+          // Aligned layout: just the day number
+          td.textContent = cell.day;
+        } else {
+          // Default layout: day number + weekday letter
+          const dateSpan = document.createElement('span');
+          dateSpan.className = 'date';
+          dateSpan.textContent = cell.day;
+
+          const daySpan = document.createElement('span');
+          daySpan.className = 'day';
+          daySpan.textContent = cell.weekdayLetter;
+
+          td.appendChild(dateSpan);
+          td.appendChild(document.createTextNode(' '));
+          td.appendChild(daySpan);
+        }
+      }
+
+      tr.appendChild(td);
+    }
+
+    tbody.appendChild(tr);
+  }
+}
+
+// ============================================================
+// Initialization
+// ============================================================
+
+(function init() {
+  const params = new URLSearchParams(window.location.search);
+  const year = parseInt(params.get('year')) || new Date().getFullYear();
+  const layout = params.get('layout') || 'default';
+  const sofshavua = params.has('sofshavua');
+
+  renderCalendar(year, layout, sofshavua);
+})();
+</script>
+</body>
+</html>
